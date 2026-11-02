@@ -457,7 +457,22 @@ fn global(s: &Dxs, cl: &mut Classes, player: &Obj, skipped: &mut Vec<String>) ->
 
 // ------------------------------------------------------------------------------------------------ a map
 
-fn npc(s: &Dxs, cl: &mut Classes, actor: usize, a: &ActorInfo, o: i32, player: i32) -> NpcSave {
+/// Saved orders and where they lead. No goal means the player, as a pawn's order with no tag does in the original
+/// (FindTaggedActor) and in ours. The target is the saved actor, not its tag: a PatrolPoint isn't in Level::actors. It
+/// is taken as a fixed spot, which is also what Npc::set_orders does with a target that moves.
+fn order_target(s: &Dxs, ordered: Option<Orders>, tag: &str, target: i32) -> (Option<Orders>, Option<[f64; 3]>) {
+    if target > 0 && !s.destroyed(target) {
+        let player = s.class(target).starts_with("JCDenton");
+        return (ordered, (!player).then(|| vector(&s.props(target), "Location")));
+    }
+    match ordered {
+        // The target has gone: state RunningTo ends in Standing there. Ours would run to the player instead.
+        Some(Orders::RunningTo | Orders::GoingTo) if !tag.is_empty() => (Some(Orders::Standing), None),
+        _ => (ordered, None),
+    }
+}
+
+fn npc(s: &Dxs, cl: &mut Classes, actor: usize, a: &ActorInfo, o: i32) -> NpcSave {
     let p = s.obj(cl, o);
     let (mut arsenal, mut ammo_left) = (Vec::new(), Vec::new());
     for i in s.chain(link(&p.saved, "Inventory"), "Inventory") {
@@ -474,23 +489,30 @@ fn npc(s: &Dxs, cl: &mut Classes, actor: usize, a: &ActorInfo, o: i32, player: i
     let start = [start[0] as f64, start[1] as f64, start[2] as f64];
     let in_world = flag(&p.all, "bInWorld", true);
     let turn = std::f64::consts::TAU / 65536.0;
+    let ordered = orders(&text(&p.all, "Orders"));
+    let order_tag = text(&p.all, "OrderTag");
+    let (ordered_now, order_goal) = order_target(s, ordered, &order_tag, link(&p.saved, "OrderActor"));
+    let location = vector(&p.all, "Location");
     NpcSave {
         actor,
-        location: vector(&p.all, "Location"),
+        location,
         yaw: rotator(&p.all, "Rotation")[1] as f64 * turn,
         hidden: flag(&p.all, "bHidden", false) && in_world,
         in_world,
         parts: body_parts(&p.all, health),
         health,
         alliance: text(&p.all, "Alliance"),
-        orders: orders(&text(&p.all, "Orders")),
-        order_tag: text(&p.all, "OrderTag"),
-        // The actor itself: a PatrolPoint isn't in Level::actors, so the tag wouldn't find it.
-        order_goal: match link(&p.saved, "OrderActor") {
-            g if g <= 0 || g == player => None,
-            g => Some(vector(&s.props(g), "Location")),
+        orders: ordered_now,
+        order_tag,
+        order_goal,
+        // As Npc::set_orders: orders that end in Standing stand here.
+        home: if ordered_now != ordered {
+            location
+        } else if use_home {
+            vector(&p.all, "HomeLoc")
+        } else {
+            start
         },
-        home: if use_home { vector(&p.all, "HomeLoc") } else { start },
         home_yaw: rotator(&a.props, "Rotation")[1] as f64 * turn,
         use_home: true,
         arsenal,
@@ -551,7 +573,7 @@ fn level_save(s: &Dxs, cl: &mut Classes, level: &Level, player: i32, carried_key
         l.present.push(a);
         let pawn = cl.is_a(&info.class, "ScriptedPawn");
         if pawn {
-            l.npcs.push(npc(s, cl, a, info, o, player));
+            l.npcs.push(npc(s, cl, a, info, o));
         } else {
             let (from, to) = (info.location(), vector(&saved.all, "Location"));
             let far = (0..3).any(|c| (from[c] as f64 - to[c]).abs() > 1.0);
