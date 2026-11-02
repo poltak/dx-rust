@@ -9,6 +9,9 @@
 - An app bundle keeps settings and saves in Application Support.
 - The mouse is released when the game loses focus, and the window keeps its size on a Retina display.
 
+### Saves
+- `--import-save <save folder>` converts a save of the original Deus Ex into one of ours.
+
 ### Remastered lighting (enhancements, on in Modern)
 - Remastered Lighting: every wall and floor relit per pixel by its strongest lamps, with real falloff and shape,
   keeping the original's baked shadows.

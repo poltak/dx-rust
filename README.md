@@ -134,6 +134,18 @@ Classic at 3840x2160 pixels and in Modern at 2560x1440 pixels (a 1280x720 window
 for Modern if the frame rate is low. macOS uses some function keys itself: turn on *Use F1, F2, etc. keys as standard function keys* in System Settings, or bind
 the augmentations to other keys. gilrs has no rumble on macOS, so only a DualSense rumbles there (it uses HID).
 
+### Saves from the original game (optional)
+The game can convert a save folder of the original Deus Ex into one of its own saves. The original save is only read:
+
+```
+dxview "<Deus Ex folder>" --import-save "<Deus Ex folder>/Save/Save0001"
+```
+
+On macOS, the program is `DX RUST.app/Contents/MacOS/dxview`. The new save is in the **Load Game** list. It keeps the
+player, inventory, skills, augmentations, flags, goals, notes, images, conversation history and keys. On each map it
+keeps which objects still exist, moved decorations, living pawns, doors and triggers. It does not keep bodies, items
+dropped in play, alliances changed in play, or the state of hacked computers and security systems.
+
 ### Mods (optional)
 1. Download the mods you want and unzip each one into its own folder:
    [Lay D Denton Project](https://www.moddb.com/mods/the-lay-d-denton-project),

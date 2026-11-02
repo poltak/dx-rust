@@ -1401,7 +1401,7 @@ pub fn save_last_system(world: &mut World) {
     }
 }
 
-fn write(path: &Path, s: &SaveGame) -> std::io::Result<()> {
+pub(crate) fn write(path: &Path, s: &SaveGame) -> std::io::Result<()> {
     if let Some(d) = path.parent() {
         std::fs::create_dir_all(d)?;
     }

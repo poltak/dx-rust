@@ -15,6 +15,7 @@ use bevy::{
 };
 #[macro_use]
 mod env;
+mod dxsimport;
 mod queue;
 mod util;
 mod abilities;
@@ -581,6 +582,19 @@ fn main() {
         // Else the usual Steam / GOG / Heroic places (Steam Deck included).
         .or_else(|| unreal_pkg::gamedir::detect().map(|p| p.display().to_string()))
         .unwrap_or_else(|| r"C:\Games\Deus Ex".to_string());
+    // --import-save <folder> [out.ron]: convert a saved game of the original Deus Ex, then stop.
+    if let Some(i) = args.iter().position(|a| a == "--import-save") {
+        let Some(folder) = args.get(i + 1) else {
+            eprintln!("usage: dxview [game folder] --import-save <save folder> [out.ron]");
+            std::process::exit(2);
+        };
+        let out = args.get(i + 2).map(std::path::Path::new);
+        if let Err(e) = dxsimport::run(std::path::Path::new(&root), std::path::Path::new(folder), out) {
+            eprintln!("import failed: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
     // Mods (unreal_pkg::mods): the launcher's Mods page writes Mod.<id>= / ModOn.<id>= lines in launcher.txt (Lay D
     // Denton's older LDDPPath= still counts). Overlays (Lay D Denton) are laid over the game folder, addons searched
     // after it, HD texture packs used texture by texture. DXVIEW_MOD (';'-separated folders) adds overlays for tests.
