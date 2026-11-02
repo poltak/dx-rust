@@ -11,6 +11,7 @@
 //! Doesn't: bodies and items spawned in play (no map actor to match), alliances changed in play, hacked terminals,
 //! security systems. Only reads the save folder, and never replaces a file.
 
+use crate::ai::Orders;
 use crate::consys::{ConSave, Goal, History};
 use crate::save::{AugSave, Global, LevelSave, MoverSave, NpcSave, PlayerSave, SaveGame, VERSION};
 use crate::triggers::TrigSave;
@@ -94,10 +95,15 @@ impl Dxs {
         Obj { class, saved, all }
     }
 
-    /// The saved object of a map actor: same name, same class.
+    /// The object has been destroyed: killed pawns, smashed crates and the like stay in the package, marked.
+    fn destroyed(&self, o: i32) -> bool {
+        flag(&self.props(o), "bDeleteMe", false)
+    }
+
+    /// The saved object of a map actor that still exists: same name, same class, not destroyed.
     fn actor(&self, a: &ActorInfo) -> Option<i32> {
         let o = *self.names.get(&a.name.to_ascii_lowercase())?;
-        self.class(o).eq_ignore_ascii_case(&a.class).then_some(o)
+        (self.class(o).eq_ignore_ascii_case(&a.class) && !self.destroyed(o)).then_some(o)
     }
 
     /// Objects linked one to the next by `next` (a guard stops a broken save looping).
@@ -180,6 +186,21 @@ fn camera_angles(view: [i32; 3]) -> (f32, f32) {
     let deg = |v: i32| v as f32 * 360.0 / 65536.0;
     let yaw = deg(view[1].rem_euclid(65536));
     ((-yaw - 90.0).to_radians(), deg(signed(view[0])).to_radians())
+}
+
+/// Saved orders ours has too, as Npc::set_orders reads them. The rest (Attacking, Leaving, Idle...) are reactions or
+/// the work of scripts, and a pawn loaded with them goes back to the map's orders.
+fn orders(name: &str) -> Option<Orders> {
+    Some(match name.to_ascii_lowercase().as_str() {
+        "standing" => Orders::Standing,
+        "patrolling" => Orders::Patrolling,
+        "wandering" => Orders::Wandering,
+        "sitting" => Orders::Sitting,
+        "runningto" | "following" => Orders::RunningTo,
+        "goingto" => Orders::GoingTo,
+        "waitingfor" => Orders::WaitingFor,
+        _ => return None,
+    })
 }
 
 fn body_parts(p: &[Property], health: f32) -> [f32; 6] {
@@ -404,6 +425,9 @@ fn global(s: &Dxs, cl: &mut Classes, player: &Obj, skipped: &mut Vec<String>) ->
         name: if name.is_empty() { "JC Denton".to_string() } else { name },
         skin: int(p, "PlayerSkin", 0).max(0) as u8,
         difficulty: float(p, "CombatDifficulty", 1.0),
+        female: player.class == "JCDentonFemale" || flag(p, "bMadeFemale", false),
+        retro_morpheus: flag(p, "bRetroMorpheus", false),
+        male_interactions: flag(p, "bFemaleUsesMaleInteractions", false),
         player: PlayerSave {
             location: vector(p, "Location"),
             yaw,
@@ -433,7 +457,7 @@ fn global(s: &Dxs, cl: &mut Classes, player: &Obj, skipped: &mut Vec<String>) ->
 
 // ------------------------------------------------------------------------------------------------ a map
 
-fn npc(s: &Dxs, cl: &mut Classes, actor: usize, a: &ActorInfo, o: i32) -> NpcSave {
+fn npc(s: &Dxs, cl: &mut Classes, actor: usize, a: &ActorInfo, o: i32, player: i32) -> NpcSave {
     let p = s.obj(cl, o);
     let (mut arsenal, mut ammo_left) = (Vec::new(), Vec::new());
     for i in s.chain(link(&p.saved, "Inventory"), "Inventory") {
@@ -459,7 +483,13 @@ fn npc(s: &Dxs, cl: &mut Classes, actor: usize, a: &ActorInfo, o: i32) -> NpcSav
         parts: body_parts(&p.all, health),
         health,
         alliance: text(&p.all, "Alliance"),
+        orders: orders(&text(&p.all, "Orders")),
         order_tag: text(&p.all, "OrderTag"),
+        // The actor itself: a PatrolPoint isn't in Level::actors, so the tag wouldn't find it.
+        order_goal: match link(&p.saved, "OrderActor") {
+            g if g <= 0 || g == player => None,
+            g => Some(vector(&s.props(g), "Location")),
+        },
         home: if use_home { vector(&p.all, "HomeLoc") } else { start },
         home_yaw: rotator(&a.props, "Rotation")[1] as f64 * turn,
         use_home: true,
@@ -469,9 +499,9 @@ fn npc(s: &Dxs, cl: &mut Classes, actor: usize, a: &ActorInfo, o: i32) -> NpcSav
     }
 }
 
-fn mover(s: &Dxs, cl: &mut Classes, index: usize, info: &dx_level::movers::MoverInfo) -> MoverSave {
+fn mover(s: &Dxs, cl: &mut Classes, index: usize, info: &dx_level::movers::MoverInfo, actor: &ActorInfo) -> MoverSave {
     let at = [info.location[0] as f64, info.location[1] as f64, info.location[2] as f64];
-    let Some(o) = s.names.get(&info.name.to_ascii_lowercase()).copied() else {
+    let Some(o) = s.actor(actor) else {
         return MoverSave { index, location: at, rotation: info.rotation, key_num: info.key_num, prev_key_num: info.key_num, destroyed: true, ..Default::default() };
     };
     let m = s.obj(cl, o);
@@ -521,7 +551,7 @@ fn level_save(s: &Dxs, cl: &mut Classes, level: &Level, player: i32, carried_key
         l.present.push(a);
         let pawn = cl.is_a(&info.class, "ScriptedPawn");
         if pawn {
-            l.npcs.push(npc(s, cl, a, info, o));
+            l.npcs.push(npc(s, cl, a, info, o, player));
         } else {
             let (from, to) = (info.location(), vector(&saved.all, "Location"));
             let far = (0..3).any(|c| (from[c] as f64 - to[c]).abs() > 1.0);
@@ -535,7 +565,7 @@ fn level_save(s: &Dxs, cl: &mut Classes, level: &Level, player: i32, carried_key
         }
     }
     for (index, info) in level.movers.iter().enumerate() {
-        l.movers.push(mover(s, cl, index, info));
+        l.movers.push(mover(s, cl, index, info, &level.actors[info.actor]));
     }
     for (actor, info) in level.actors.iter().enumerate() {
         if !cl.is_a(&info.class, "Trigger") {
@@ -578,9 +608,11 @@ pub fn run(root: &Path, folder: &Path, out: Option<&Path>) -> Result<PathBuf, St
         return Err("SaveInfo.dxs names no map".to_string());
     }
     let s = Dxs::open(&folder.join(format!("{map}.dxs")))?;
-    let mut classes: Vec<&str> = vec!["JCDentonMale"];
-    classes.push("JCDentonFemale");
-    let player = classes.iter().flat_map(|c| s.objects_of(c)).next().ok_or_else(|| format!("{map}.dxs holds no player"))?;
+    let player = ["JCDentonMale", "JCDentonFemale"]
+        .iter()
+        .flat_map(|c| s.objects_of(c))
+        .find(|&o| !s.destroyed(o))
+        .ok_or_else(|| format!("{map}.dxs holds no player"))?;
     let po = s.obj(&mut cl, player);
     // Save/Current holds maps the player has left: their copy of him has no flags, skills or augmentations.
     if link(&po.saved, "FlagBase") == 0 || link(&po.saved, "SkillSystem") == 0 {
@@ -652,6 +684,14 @@ mod tests {
         assert_eq!(clip_rounds(6, 2, 278), 4);
         assert_eq!(clip_rounds(30, 0, 12), 12);
         assert_eq!(clip_rounds(6, 9, 278), 0);
+    }
+
+    #[test]
+    fn orders_ours_lacks_keep_the_map_orders() {
+        assert_eq!(orders("RunningTo"), Some(Orders::RunningTo));
+        assert_eq!(orders("Following"), Some(Orders::RunningTo));
+        assert_eq!(orders("Attacking"), None);
+        assert_eq!(orders(""), None);
     }
 
     #[test]
