@@ -331,6 +331,9 @@ pub struct NpcSave {
     pub alliance: String,
     pub orders: Option<crate::ai::Orders>,
     pub order_tag: String,
+    /// Where RunningTo / GoingTo orders lead (None: to the player).
+    #[serde(default)]
+    pub order_goal: Option<[f64; 3]>,
     pub home: [f64; 3],
     pub home_yaw: f64,
     pub use_home: bool,
@@ -799,6 +802,7 @@ fn capture_inner(world: &mut World, description: &str, count_it: bool) -> SaveGa
                 alliance: n.alliance.clone(),
                 orders: Some(n.orders),
                 order_tag: n.order_tag.clone(),
+                order_goal: n.order_goal.map(a3),
                 home: a3(n.home),
                 home_yaw: n.home_yaw,
                 use_home: n.use_home,
@@ -1117,6 +1121,7 @@ fn restore_level_part(world: &mut World, s: &SaveGame, l: &LevelSave) {
                 n.orders = o;
             }
             n.order_tag = sv.order_tag.clone();
+            n.order_goal = sv.order_goal.map(v3);
             n.home = v3(sv.home);
             n.home_yaw = sv.home_yaw;
             n.use_home = sv.use_home;
