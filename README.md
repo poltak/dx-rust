@@ -69,7 +69,10 @@ It runs as a native Windows program, on Steam Deck / Linux and on Apple Silicon 
     under the dead, bloodier gibs), wound marks, hurt poses and limps, and coat tails that ripple as people move.
 - **Modern play (all optional):**
   - Modern Aiming: the aim sways within the accuracy cone (wide when untrained, steady when you master the
-    weapon or hold still) and the crosshair and gun follow it, with aim-down-sights on guns;
+    weapon or hold still) and the crosshair and gun follow it, with aim-down-sights on guns (lined up on the
+    original weapon models as well as HDTP's);
+  - a diegetic rifle scope: the zoomed view is a live lens with a reticle in front of the eye, the world still
+    around it, wandering under the reticle until you master the rifle;
   - a third-person camera (free orbit or over the shoulder), mantling, carried objects as cover, ladder grabbing;
   - Smarter AI (GMDX's tougher guards, sharper senses, suppressive fire, guards who call out and check on
     disturbances) with optional alert markers over their heads;
@@ -132,7 +135,8 @@ Settings and saves are in `~/Library/Application Support/DX RUST`. Resolutions a
 Retina display draws twice as many pixels in each direction. On the heaviest street map an M2 Max holds 60 fps in
 Classic at 3840x2160 pixels and in Modern at 2560x1440 pixels (a 1280x720 window on Retina), so choose a smaller size
 for Modern if the frame rate is low. macOS uses some function keys itself: turn on *Use F1, F2, etc. keys as standard function keys* in System Settings, or bind
-the augmentations to other keys. gilrs has no rumble on macOS, so only a DualSense rumbles there (it uses HID).
+the augmentations to other keys. gilrs has no rumble on macOS, so only a DualSense rumbles there (it uses HID). Upscaling has no
+temporal antialiasing on macOS, so *Native AA* only sharpens there.
 
 ### Saves from the original game (optional)
 The game can convert a save folder of the original Deus Ex into one of its own saves. The original save is only read:
